@@ -1,11 +1,16 @@
-use std::fs::File;
-use std::io::Read;
+use std::cell::RefCell;
+use std::rc::Rc;
 
-use crate::{memory::Memory, registers::Register, registers::Registers};
+use crate::{
+    device::SharedMemory,
+    ppu::PPU,
+    registers::{Register, Registers},
+};
 
 pub struct CPU {
     pub registers: Registers,
-    pub memory: Memory, 
+    pub memory: SharedMemory,
+    pub ppu: Rc<RefCell<PPU>>,
     pub stopped: bool,
     pub cycle: u32,
     pub halted: bool,
@@ -13,10 +18,11 @@ pub struct CPU {
 }
 
 impl CPU {
-    pub fn new() -> CPU {
+    pub fn new(memory: SharedMemory, ppu: Rc<RefCell<PPU>>) -> CPU {
         CPU {
             registers: Registers::new(),
-            memory: Memory::new(),
+            memory,
+            ppu,
             stopped: false,
             cycle: 0,
             halted: false,
@@ -24,24 +30,13 @@ impl CPU {
         }
     }
 
-    pub fn load_instructions(&mut self, filename: &str) {
-        let mut file = File::open(filename).expect("there was an issue opening the file");
-        let mut buffer = Vec::new();
-        file.read_to_end(&mut buffer).expect("failed to read");
-
-        let start_address = 0x0000;
-        for (i, &byte) in buffer.iter().enumerate() {
-            self.memory.write_byte((start_address + i) as u16, byte);
-        }
-    }
-
     // fetches instruction from memory
     pub fn fetch_opcode(&mut self) -> u8 {
         let pc = self.registers.pc;
 
-        let opcode = self.memory.read_byte(pc);
+        let opcode = self.read_byte(pc);
 
-        self.registers.pc += 1;
+        self.registers.pc = self.registers.pc.wrapping_add(1);
 
         opcode
     }
@@ -601,13 +596,204 @@ impl CPU {
     }
 
     pub fn cycle(&mut self) {
-        let cycles_per_frame = 70244;
+        let cycles_per_frame = 70224;
 
         while self.cycle < cycles_per_frame {
+            self.handle_interrupt();
             let opcode = self.fetch_opcode();
             self.execute_opcode(opcode);
         }
 
         self.cycle -= cycles_per_frame;
+    }
+
+    pub fn handle_interrupt(&mut self) {
+        if self.ime {
+            let interrupt_enable = self.memory.borrow().interrupt_enable;
+            let interrupt_flags = self.read_byte(0xFF0F);
+
+            let requested = interrupt_enable & interrupt_flags;
+
+            if requested != 0 {
+                if self.halted {
+                    self.halted = false;
+                }
+
+                let interrupt_bit = requested.trailing_zeros() as u8;
+                let interrupt_vector = match interrupt_bit {
+                    0 => 0x0040,
+                    1 => 0x0048,
+                    2 => 0x0050,
+                    3 => 0x0058,
+                    4 => 0x0060,
+                    _ => return,
+                };
+
+                self.write_byte(0xFF0F, interrupt_flags & !(1 << interrupt_bit));
+                self.ime = false;
+                let pc = self.registers.pc;
+                self.push_stack(pc);
+                self.registers.pc = interrupt_vector;
+
+                self.handle_cycles(20);
+            }
+        }
+    }
+
+    pub fn read_byte(&self, addr: u16) -> u8 {
+        let byte = self.memory.borrow().read_byte(addr);
+        byte
+    }
+
+    pub fn write_byte(&self, addr: u16, value: u8) {
+        self.memory.borrow_mut().write_byte(addr, value);
+    }
+
+    pub fn push_stack(&mut self, value: u16) {
+        self.registers.sp = self.registers.sp.wrapping_sub(1);
+        self.write_byte(self.registers.sp, (value & 0xFF) as u8);
+        self.registers.sp = self.registers.sp.wrapping_sub(1);
+        self.write_byte(self.registers.sp, (value >> 8) as u8);
+    }
+
+    pub fn pop_stack(&mut self) -> u16 {
+        let high = self.read_byte(self.registers.sp) as u16;
+        self.registers.sp = self.registers.sp.wrapping_add(1);
+        let low = self.read_byte(self.registers.sp) as u16;
+        self.registers.sp = self.registers.sp.wrapping_add(1);
+        (high << 8) | low
+    }
+
+    pub fn handle_cycles(&mut self, cycles: u32) {
+        self.cycle += cycles;
+        self.ppu.borrow_mut().step(cycles);
+    }
+
+    // Get bit at position
+    pub fn get_bit_at_position(byte: u8, position: u8) -> u8 {
+        (byte >> position) & 1
+    }
+
+    // Update z flag based on its expected
+    pub fn update_z_flag(&mut self, result: u8) {
+        self.registers.set_z_flag(result == 0);
+    }
+
+    pub fn update_s_flag(&mut self, is_subtraction: bool) {
+        self.registers.set_s_flag(is_subtraction);
+    }
+
+    pub fn update_c_flag8(&mut self, operand1: u8, operand2: u8, is_subtraction: bool) {
+        let carry = if is_subtraction {
+            operand1 < operand2
+        } else {
+            (operand1 as u16 + operand2 as u16) & 0x100 != 0
+        };
+
+        self.registers.set_c_flag(carry);
+    }
+
+    pub fn update_h_flag8(&mut self, operand1: u8, operand2: u8, is_subtraction: bool) {
+        let half_carry = if is_subtraction {
+            (operand1 & 0x0F) < (operand2 & 0x0F)
+        } else {
+            ((operand1 & 0x0F) + (operand2 & 0x0F)) & 0x10 != 0
+        };
+
+        self.registers.set_h_flag(half_carry);
+    }
+
+    pub fn update_c_flag16(&mut self, operand1: u16, operand2: u16, is_subtraction: bool) {
+        let carry = if is_subtraction {
+            operand1 < operand2
+        } else {
+            (operand1 as u32 + operand2 as u32) & 0x10000 != 0
+        };
+
+        self.registers.set_c_flag(carry);
+    }
+
+    pub fn update_h_flag16(&mut self, operand1: u16, operand2: u16, is_subtraction: bool) {
+        let half_carry = if is_subtraction {
+            (operand1 & 0x0FFF) < (operand2 & 0x0FFF)
+        } else {
+            ((operand1 & 0x0FFF) + (operand2 & 0x0FFF)) & 0x1000 != 0
+        };
+
+        self.registers.set_h_flag(half_carry);
+    }
+
+    pub fn add(&mut self, op1: u8, op2: u8) -> u8 {
+        let result = op1.wrapping_add(op2);
+        self.update_z_flag(result);
+        self.registers.set_s_flag(false);
+        self.update_h_flag8(op1, op2, false);
+        self.update_c_flag8(op1, op2, false);
+        result
+    }
+
+    pub fn sub(&mut self, op1: u8, op2: u8) -> u8 {
+        let result = op1.wrapping_sub(op2);
+        self.update_z_flag(result);
+        self.registers.set_s_flag(true);
+        self.update_h_flag8(op1, op2, true);
+        self.update_c_flag8(op1, op2, true);
+        result
+    }
+
+    pub fn and(&mut self, op1: u8, op2: u8) -> u8 {
+        let result = op1 & op2;
+        self.update_z_flag(result);
+        self.registers.set_s_flag(false);
+        self.registers.set_h_flag(true);
+        self.registers.set_c_flag(false);
+        result
+    }
+
+    pub fn or(&mut self, op1: u8, op2: u8) -> u8 {
+        let result = op1 | op2;
+        self.update_z_flag(result);
+        self.registers.set_s_flag(false);
+        self.registers.set_h_flag(false);
+        self.registers.set_c_flag(false);
+        result
+    }
+
+    pub fn adc(&mut self, op1: u8, op2: u8) -> u8 {
+        let carry = if self.registers.get_c_flag() { 1 } else { 0 };
+        let result = op1.wrapping_add(op2).wrapping_add(carry);
+        self.update_z_flag(result);
+        self.registers.set_s_flag(false);
+        self.update_h_flag8(op1, op2.wrapping_add(carry), false);
+        self.update_c_flag8(op1, op2.wrapping_add(carry), false);
+        result
+    }
+
+    pub fn sbc(&mut self, op1: u8, op2: u8) -> u8 {
+        let carry = if self.registers.get_c_flag() { 1 } else { 0 };
+        let result = op1.wrapping_sub(op2).wrapping_sub(carry);
+        self.update_z_flag(result);
+        self.registers.set_s_flag(true);
+        self.update_h_flag8(op1, op2.wrapping_add(carry), true);
+        self.update_c_flag8(op1, op2.wrapping_add(carry), true);
+        result
+    }
+
+    pub fn xor(&mut self, op1: u8, op2: u8) -> u8 {
+        let result = op1 ^ op2;
+        self.update_z_flag(result);
+        self.registers.set_s_flag(false);
+        self.registers.set_h_flag(false);
+        self.registers.set_c_flag(false);
+        result
+    }
+
+    pub fn cp(&mut self, op1: u8, op2: u8) -> u8 {
+        let result = op1.wrapping_sub(op2);
+        self.update_z_flag(result);
+        self.registers.set_s_flag(true);
+        self.update_h_flag8(op1, op2, true);
+        self.update_c_flag8(op1, op2, true);
+        result
     }
 }

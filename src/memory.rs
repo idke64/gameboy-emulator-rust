@@ -13,16 +13,16 @@
 */
 
 pub struct Memory {
-    pub rom: [u8; 0x8000], // 0x0000 - 0x7FFFF
+    pub rom: [u8; 0x8000],  // 0x0000 - 0x7FFFF
     pub vram: [u8; 0x2000], // 0x8000 - 0x9FFF
     pub eram: [u8; 0x2000], // 0xA000 - 0xBFFF
     pub wram: [u8; 0x2000], // 0xC000 - 0xDFFF
     // 0xE000 - 0xFDFF (echo RAM)
     pub oam: [u8; 0xA0], // 0xFE00 - 0xFE9F
     // 0xFEA0 - 0xFEFF not usable
-    pub io: [u8; 0x80], // 0xFF00 - 0xFF7F
-    pub hram: [u8; 0x7F], // 0xFF80 - 0xFFFE
-    pub interrupt_enable: u8,  // 0xFFFF
+    pub io: [u8; 0x80],       // 0xFF00 - 0xFF7F
+    pub hram: [u8; 0x7F],     // 0xFF80 - 0xFFFE
+    pub interrupt_enable: u8, // 0xFFFF
 }
 
 impl Memory {
@@ -56,7 +56,7 @@ impl Memory {
 
     pub fn write_byte(&mut self, address: u16, value: u8) {
         match address {
-            0x0000..=0x7FFF => self.rom[address as usize] = value, 
+            0x0000..=0x7FFF => self.rom[address as usize] = value,
             0x8000..=0x9FFF => self.vram[(address - 0x8000) as usize] = value,
             0xA000..=0xBFFF => self.eram[(address - 0xA000) as usize] = value,
             0xC000..=0xDFFF => self.wram[(address - 0xC000) as usize] = value,
@@ -65,8 +65,7 @@ impl Memory {
             0xFF00..=0xFF7F => self.io[(address - 0xFF00) as usize] = value,
             0xFF80..=0xFFFE => self.hram[(address - 0xFF80) as usize] = value,
             0xFFFF => self.interrupt_enable = value,
-            _ => {} 
+            _ => {}
         }
     }
 }
-

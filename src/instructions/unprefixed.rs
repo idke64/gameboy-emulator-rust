@@ -18,17 +18,17 @@ impl CPU {
     }
 
     pub fn ld_8_imm1(&mut self, dest: Register) {
-        let next_byte = self.memory.read_byte(self.registers.pc);
-        self.registers.pc += 1;
+        let next_byte = self.read_byte(self.registers.pc);
+        self.registers.pc = self.registers.pc.wrapping_add(1);
         self.registers.set_register8(dest, next_byte);
         self.handle_cycles(8);
     }
 
     pub fn ld_16_imm2(&mut self, dest: Register) {
-        let next_byte1 = self.memory.read_byte(self.registers.pc);
-        self.registers.pc += 1;
-        let next_byte2 = self.memory.read_byte(self.registers.pc);
-        self.registers.pc += 1;
+        let next_byte1 = self.read_byte(self.registers.pc);
+        self.registers.pc = self.registers.pc.wrapping_add(1);
+        let next_byte2 = self.read_byte(self.registers.pc);
+        self.registers.pc = self.registers.pc.wrapping_add(1);
 
         let word = ((next_byte2 as u16) << 8) | (next_byte1 as u16);
 
@@ -39,13 +39,13 @@ impl CPU {
     pub fn ld_mem16_8(&mut self, reg16: Register, src: Register) {
         let addr = self.registers.get_register16(reg16);
         let value = self.registers.get_register8(src);
-        self.memory.write_byte(addr, value);
+        self.write_byte(addr, value);
         self.handle_cycles(8);
     }
 
     pub fn ld_8_mem16(&mut self, dest: Register, reg16: Register) {
         let addr = self.registers.get_register16(reg16);
-        let byte = self.memory.read_byte(addr);
+        let byte = self.read_byte(addr);
         self.registers.set_register8(dest, byte);
         self.handle_cycles(8);
     }
@@ -75,18 +75,17 @@ impl CPU {
     }
 
     pub fn ld_memimm2_sp(&mut self) {
-        let next_byte1 = self.memory.read_byte(self.registers.pc);
-        self.registers.pc += 1;
-        let next_byte2 = self.memory.read_byte(self.registers.pc);
-        self.registers.pc += 1;
+        let next_byte1 = self.read_byte(self.registers.pc);
+        self.registers.pc = self.registers.pc.wrapping_add(1);
+        let next_byte2 = self.read_byte(self.registers.pc);
+        self.registers.pc = self.registers.pc.wrapping_add(1);
 
         let word = ((next_byte2 as u16) << 8) | (next_byte1 as u16);
 
         let sp = self.registers.sp;
 
-        self.memory.write_byte(word, (sp & 0x00FF) as u8);
-        self.memory
-            .write_byte(word.wrapping_add(1), (sp >> 8) as u8);
+        self.write_byte(word, (sp & 0x00FF) as u8);
+        self.write_byte(word.wrapping_add(1), (sp >> 8) as u8);
 
         self.handle_cycles(20);
     }
@@ -95,41 +94,41 @@ impl CPU {
         let offset = self.registers.get_register8(reg8) as u16;
         let addr = 0xFF00 + offset;
         let value = self.registers.get_register8(src);
-        self.memory.write_byte(addr, value);
+        self.write_byte(addr, value);
         self.handle_cycles(8);
     }
 
     pub fn ld_8_mem8(&mut self, dest: Register, reg8: Register) {
         let offset = self.registers.get_register8(reg8) as u16;
         let addr = 0xFF00 + offset;
-        let value = self.memory.read_byte(addr);
+        let value = self.read_byte(addr);
         self.registers.set_register8(dest, value);
         self.handle_cycles(8);
     }
 
     pub fn ld_memimm2_8(&mut self, src: Register) {
-        let next_byte1 = self.memory.read_byte(self.registers.pc);
-        self.registers.pc += 1;
-        let next_byte2 = self.memory.read_byte(self.registers.pc);
-        self.registers.pc += 1;
+        let next_byte1 = self.read_byte(self.registers.pc);
+        self.registers.pc = self.registers.pc.wrapping_add(1);
+        let next_byte2 = self.read_byte(self.registers.pc);
+        self.registers.pc = self.registers.pc.wrapping_add(1);
 
         let addr = ((next_byte2 as u16) << 8) | (next_byte1 as u16);
 
         let value = self.registers.get_register8(src);
 
-        self.memory.write_byte(addr, value);
+        self.write_byte(addr, value);
         self.handle_cycles(16);
     }
 
     pub fn ld_8_memimm2(&mut self, dest: Register) {
-        let next_byte1 = self.memory.read_byte(self.registers.pc);
-        self.registers.pc += 1;
-        let next_byte2 = self.memory.read_byte(self.registers.pc);
-        self.registers.pc += 1;
+        let next_byte1 = self.read_byte(self.registers.pc);
+        self.registers.pc = self.registers.pc.wrapping_add(1);
+        let next_byte2 = self.read_byte(self.registers.pc);
+        self.registers.pc = self.registers.pc.wrapping_add(1);
 
         let addr = ((next_byte2 as u16) << 8) | (next_byte1 as u16);
 
-        let value = self.memory.read_byte(addr);
+        let value = self.read_byte(addr);
 
         self.registers.set_register8(dest, value);
         self.handle_cycles(16);
@@ -142,8 +141,8 @@ impl CPU {
     }
 
     pub fn ld_hl_sp_r8(&mut self) {
-        let r8 = self.memory.read_byte(self.registers.pc) as i8;
-        self.registers.pc += 1;
+        let r8 = self.read_byte(self.registers.pc) as i8;
+        self.registers.pc = self.registers.pc.wrapping_add(1);
 
         let sp = self.registers.sp;
         let result = sp.wrapping_add(r8 as u16);
@@ -159,33 +158,33 @@ impl CPU {
     }
 
     pub fn ldh_memimm1_8(&mut self, src: Register) {
-        let next_byte = self.memory.read_byte(self.registers.pc);
-        self.registers.pc += 1;
+        let next_byte = self.read_byte(self.registers.pc);
+        self.registers.pc = self.registers.pc.wrapping_add(1);
 
         let addr = 0xFF00 + next_byte as u16;
         let value = self.registers.get_register8(src);
-        self.memory.write_byte(addr, value);
+        self.write_byte(addr, value);
 
         self.handle_cycles(12);
     }
 
     pub fn ldh_8_memimm1(&mut self, dest: Register) {
-        let next_byte = self.memory.read_byte(self.registers.pc);
-        self.registers.pc += 1;
+        let next_byte = self.read_byte(self.registers.pc);
+        self.registers.pc = self.registers.pc.wrapping_add(1);
 
         let addr = 0xFF00 + next_byte as u16;
-        let value = self.memory.read_byte(addr);
+        let value = self.read_byte(addr);
         self.registers.set_register8(dest, value);
 
         self.handle_cycles(12);
     }
 
     pub fn ld_mem16_imm1(&mut self, reg16: Register) {
-        let next_byte = self.memory.read_byte(self.registers.pc);
-        self.registers.pc += 1;
+        let next_byte = self.read_byte(self.registers.pc);
+        self.registers.pc = self.registers.pc.wrapping_add(1);
 
         let addr = self.registers.get_register16(reg16);
-        self.memory.write_byte(addr, next_byte);
+        self.write_byte(addr, next_byte);
 
         self.handle_cycles(12);
     }
@@ -290,11 +289,13 @@ impl CPU {
     }
 
     pub fn jr_imm1(&mut self) {
-        let offset = self.memory.read_byte(self.registers.pc) as i8;
-        self.registers.pc += 1;
+        let offset = self.read_byte(self.registers.pc) as i8;
+        self.registers.pc = self.registers.pc.wrapping_add(1);
 
-        let new_pc = self.registers.pc.wrapping_add(offset as u16);
+        let pc = self.registers.pc as i16;
+        let new_pc = pc.wrapping_add(offset as i16) as u16;
         self.registers.pc = new_pc;
+
         self.handle_cycles(12);
     }
 
@@ -455,9 +456,9 @@ impl CPU {
     pub fn add_8_mem16(&mut self, dest: Register, reg16: Register) {
         let reg = self.registers.get_register8(dest);
         let addr = self.registers.get_register16(reg16);
-        let value = self.memory.read_byte(addr);
+        let value = self.read_byte(addr);
 
-        let result = self.and(reg, value);
+        let result = self.add(reg, value);
 
         self.registers.set_register8(dest, result);
 
@@ -467,7 +468,7 @@ impl CPU {
     pub fn sub_8_mem16(&mut self, dest: Register, reg16: Register) {
         let reg = self.registers.get_register8(dest);
         let addr = self.registers.get_register16(reg16);
-        let value = self.memory.read_byte(addr);
+        let value = self.read_byte(addr);
 
         let result = self.sub(reg, value);
 
@@ -479,7 +480,7 @@ impl CPU {
     pub fn and_8_mem16(&mut self, dest: Register, reg16: Register) {
         let reg = self.registers.get_register8(dest);
         let addr = self.registers.get_register16(reg16);
-        let value = self.memory.read_byte(addr);
+        let value = self.read_byte(addr);
 
         let result = self.and(reg, value);
 
@@ -491,7 +492,7 @@ impl CPU {
     pub fn or_8_mem16(&mut self, dest: Register, reg16: Register) {
         let reg = self.registers.get_register8(dest);
         let addr = self.registers.get_register16(reg16);
-        let value = self.memory.read_byte(addr);
+        let value = self.read_byte(addr);
 
         let result = self.or(reg, value);
 
@@ -502,8 +503,8 @@ impl CPU {
 
     pub fn add_8_imm1(&mut self, dest: Register) {
         let reg = self.registers.get_register8(dest);
-        let next_byte = self.memory.read_byte(self.registers.pc);
-        self.registers.pc += 1;
+        let next_byte = self.read_byte(self.registers.pc);
+        self.registers.pc = self.registers.pc.wrapping_add(1);
 
         let result = self.add(reg, next_byte);
 
@@ -514,8 +515,8 @@ impl CPU {
 
     pub fn sub_8_imm1(&mut self, dest: Register) {
         let reg = self.registers.get_register8(dest);
-        let next_byte = self.memory.read_byte(self.registers.pc);
-        self.registers.pc += 1;
+        let next_byte = self.read_byte(self.registers.pc);
+        self.registers.pc = self.registers.pc.wrapping_add(1);
 
         let result = self.sub(reg, next_byte);
 
@@ -526,8 +527,8 @@ impl CPU {
 
     pub fn and_8_imm1(&mut self, dest: Register) {
         let reg = self.registers.get_register8(dest);
-        let next_byte = self.memory.read_byte(self.registers.pc);
-        self.registers.pc += 1;
+        let next_byte = self.read_byte(self.registers.pc);
+        self.registers.pc = self.registers.pc.wrapping_add(1);
 
         let result = self.and(reg, next_byte);
 
@@ -538,8 +539,8 @@ impl CPU {
 
     pub fn or_8_imm1(&mut self, dest: Register) {
         let reg = self.registers.get_register8(dest);
-        let next_byte = self.memory.read_byte(self.registers.pc);
-        self.registers.pc += 1;
+        let next_byte = self.read_byte(self.registers.pc);
+        self.registers.pc = self.registers.pc.wrapping_add(1);
 
         let result = self.or(reg, next_byte);
 
@@ -593,7 +594,7 @@ impl CPU {
     pub fn adc_8_mem16(&mut self, dest: Register, reg16: Register) {
         let reg = self.registers.get_register8(dest);
         let addr = self.registers.get_register16(reg16);
-        let value = self.memory.read_byte(addr);
+        let value = self.read_byte(addr);
 
         let result = self.adc(reg, value);
 
@@ -605,7 +606,7 @@ impl CPU {
     pub fn sbc_8_mem16(&mut self, dest: Register, reg16: Register) {
         let reg = self.registers.get_register8(dest);
         let addr = self.registers.get_register16(reg16);
-        let value = self.memory.read_byte(addr);
+        let value = self.read_byte(addr);
 
         let result = self.sbc(reg, value);
 
@@ -617,7 +618,7 @@ impl CPU {
     pub fn xor_8_mem16(&mut self, dest: Register, reg16: Register) {
         let reg = self.registers.get_register8(dest);
         let addr = self.registers.get_register16(reg16);
-        let value = self.memory.read_byte(addr);
+        let value = self.read_byte(addr);
 
         let result = self.xor(reg, value);
 
@@ -629,7 +630,7 @@ impl CPU {
     pub fn cp_8_mem16(&mut self, dest: Register, reg16: Register) {
         let reg = self.registers.get_register8(dest);
         let addr = self.registers.get_register16(reg16);
-        let value = self.memory.read_byte(addr);
+        let value = self.read_byte(addr);
 
         let result = self.cp(reg, value);
 
@@ -638,8 +639,8 @@ impl CPU {
 
     pub fn adc_8_imm1(&mut self, dest: Register) {
         let reg = self.registers.get_register8(dest);
-        let next_byte = self.memory.read_byte(self.registers.pc);
-        self.registers.pc += 1;
+        let next_byte = self.read_byte(self.registers.pc);
+        self.registers.pc = self.registers.pc.wrapping_add(1);
 
         let result = self.adc(reg, next_byte);
 
@@ -650,8 +651,8 @@ impl CPU {
 
     pub fn sbc_8_imm1(&mut self, dest: Register) {
         let reg = self.registers.get_register8(dest);
-        let next_byte = self.memory.read_byte(self.registers.pc);
-        self.registers.pc += 1;
+        let next_byte = self.read_byte(self.registers.pc);
+        self.registers.pc = self.registers.pc.wrapping_add(1);
 
         let result = self.sbc(reg, next_byte);
 
@@ -662,8 +663,8 @@ impl CPU {
 
     pub fn xor_8_imm1(&mut self, dest: Register) {
         let reg = self.registers.get_register8(dest);
-        let next_byte = self.memory.read_byte(self.registers.pc);
-        self.registers.pc += 1;
+        let next_byte = self.read_byte(self.registers.pc);
+        self.registers.pc = self.registers.pc.wrapping_add(1);
 
         let result = self.xor(reg, next_byte);
 
@@ -674,8 +675,8 @@ impl CPU {
 
     pub fn cp_8_imm1(&mut self, dest: Register) {
         let reg = self.registers.get_register8(dest);
-        let next_byte = self.memory.read_byte(self.registers.pc);
-        self.registers.pc += 1;
+        let next_byte = self.read_byte(self.registers.pc);
+        self.registers.pc = self.registers.pc.wrapping_add(1);
 
         let result = self.cp(reg, next_byte);
 
@@ -684,8 +685,8 @@ impl CPU {
 
     pub fn add_16_imm1(&mut self, dest: Register) {
         let reg = self.registers.get_register16(dest);
-        let next_byte = self.memory.read_byte(self.registers.pc);
-        self.registers.pc += 1;
+        let next_byte = self.read_byte(self.registers.pc);
+        self.registers.pc = self.registers.pc.wrapping_add(1);
 
         let result = reg.wrapping_add(next_byte as u16);
 
@@ -736,23 +737,14 @@ impl CPU {
     }
 
     pub fn ret(&mut self) {
-        let next_byte1 = self.memory.read_byte(self.registers.sp) as u16;
-        self.registers.sp += 1;
-        let next_byte2 = self.memory.read_byte(self.registers.sp) as u16;
-        self.registers.sp += 1;
-        let addr = (next_byte2 << 8) | next_byte1;
+        let addr = self.pop_stack();
 
         self.registers.pc = addr;
         self.handle_cycles(16);
     }
 
     pub fn pop_16(&mut self, reg16: Register) {
-        let next_byte1 = self.memory.read_byte(self.registers.sp);
-        self.registers.sp += 1;
-        let next_byte2 = self.memory.read_byte(self.registers.sp);
-        self.registers.sp += 1;
-
-        let word = ((next_byte2 as u16) << 8) | (next_byte1 as u16);
+        let word = self.pop_stack();
         self.registers.set_register16(reg16, word);
 
         self.handle_cycles(12);
@@ -761,11 +753,7 @@ impl CPU {
     pub fn push_16(&mut self, reg16: Register) {
         let value = self.registers.get_register16(reg16);
 
-        self.registers.sp -= 1;
-        self.memory
-            .write_byte(self.registers.sp, (value >> 8) as u8);
-        self.registers.sp -= 1;
-        self.memory.write_byte(self.registers.sp, value as u8);
+        self.push_stack(value);
 
         self.handle_cycles(16);
     }
@@ -803,10 +791,10 @@ impl CPU {
     }
 
     pub fn jp_imm2(&mut self) {
-        let next_byte1 = self.memory.read_byte(self.registers.pc);
-        self.registers.pc += 1;
-        let next_byte2 = self.memory.read_byte(self.registers.pc);
-        self.registers.pc += 1;
+        let next_byte1 = self.read_byte(self.registers.pc);
+        self.registers.pc = self.registers.pc.wrapping_add(1);
+        let next_byte2 = self.read_byte(self.registers.pc);
+        self.registers.pc = self.registers.pc.wrapping_add(1);
 
         let addr = ((next_byte2 as u16) << 8) | (next_byte1 as u16);
 
@@ -854,18 +842,15 @@ impl CPU {
     }
 
     pub fn call_imm2(&mut self) {
-        let next_byte1 = self.memory.read_byte(self.registers.pc);
-        self.registers.pc += 1;
-        let next_byte2 = self.memory.read_byte(self.registers.pc);
-        self.registers.pc += 1;
+        let low_byte = self.read_byte(self.registers.pc);
+        self.registers.pc = self.registers.pc.wrapping_add(1);
+        let high_byte = self.read_byte(self.registers.pc);
+        self.registers.pc = self.registers.pc.wrapping_add(1);
 
-        let addr = ((next_byte2 as u16) << 8) | (next_byte1 as u16);
+        let addr = ((high_byte as u16) << 8) | (low_byte as u16);
 
         let pc = self.registers.pc;
-        self.registers.sp -= 1;
-        self.memory.write_byte(self.registers.sp, (pc >> 8) as u8);
-        self.registers.sp -= 1;
-        self.memory.write_byte(self.registers.sp, pc as u8);
+        self.push_stack(pc);
 
         self.registers.pc = addr;
 
@@ -879,10 +864,7 @@ impl CPU {
 
     pub fn rst(&mut self, target: u16) {
         let pc = self.registers.pc;
-        self.registers.sp -= 1;
-        self.memory.write_byte(self.registers.sp, (pc >> 8) as u8);
-        self.registers.sp -= 1;
-        self.memory.write_byte(self.registers.sp, pc as u8);
+        self.push_stack(pc);
 
         self.registers.pc = target;
 
